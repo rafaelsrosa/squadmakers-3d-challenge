@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Impede que apareçam barras de rolagem */
+  background-color: #1a1a1a; /* Fundo cinza escuro, bom para 3D */
+}
+
+canvas {
+  display: block; /* Remove espaços vazios embaixo do renderizador */
+}

@@ -3,7 +3,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 
-// --- 1. SCENE SETUP ---
+// --- 1. GLOBAL GEOSPATIAL ANCHOR ---
+/**
+ * To preserve spatial coherence, we store the center of the FIRST loaded model.
+ * This acts as our "Global Anchor" (World-to-Local origin).
+ */
+let globalAnchor: THREE.Vector3 | null = null;
+
+// --- 2. SCENE SETUP ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111111);
 
@@ -11,9 +18,9 @@ const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
   0.1,
-  5000
+  10000 // Increased far plane for large scale models
 );
-camera.position.set(100, 100, 100);
+camera.position.set(150, 150, 150);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -21,21 +28,21 @@ document.body.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 
-// --- 2. LIGHTING ---
+// --- 3. LIGHTING ---
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-directionalLight.position.set(10, 20, 15);
+directionalLight.position.set(100, 200, 150);
 scene.add(directionalLight);
 
-// --- 3. HELPERS ---
-const axesHelper = new THREE.AxesHelper(50);
+// --- 4. HELPERS ---
+const axesHelper = new THREE.AxesHelper(100);
 scene.add(axesHelper);
-const gridHelper = new THREE.GridHelper(500, 50); // Increased grid to match model scale
+const gridHelper = new THREE.GridHelper(1000, 100); 
 scene.add(gridHelper);
 
-// --- 4. MODEL LOADING & VISIBILITY ---
+// --- 5. MODEL LOADING & COORDINATE TRANSFORMATION ---
 const loader = new OBJLoader();
 let model1: THREE.Object3D | null = null;
 let model2: THREE.Object3D | null = null;
@@ -51,30 +58,45 @@ const loadModel = (fileName: string, color: number, modelNum: number) => {
       }
     });
 
-    // Centralize the model geometry
+    // --- SPATIAL COHERENCE LOGIC ---
+    // Calculate the actual center of the current model file
     const box = new THREE.Box3().setFromObject(object);
-    const center = box.getCenter(new THREE.Vector3());
-    object.position.sub(center);
+    const originalCenter = new THREE.Vector3();
+    box.getCenter(originalCenter);
+
+    // If this is the first model, define the Global Anchor
+    if (!globalAnchor) {
+      globalAnchor = originalCenter.clone();
+      console.log('Global Anchor established at original coordinates:', globalAnchor);
+    }
+
+    /**
+     * COORDINATE TRANSFORMATION LAYER:
+     * Instead of using .center() on every object (which destroys relative distance),
+     * we subtract the same Global Anchor from all objects.
+     * This maintains the real-world spatial relationship between different files.
+     */
+    object.position.set(
+      originalCenter.x - globalAnchor.x,
+      originalCenter.y - globalAnchor.y,
+      originalCenter.z - globalAnchor.z
+    );
+
+    // Store original coordinates for UI feedback
+    object.userData.originalFileCenter = originalCenter.clone();
 
     scene.add(object);
     if (modelNum === 1) model1 = object;
     if (modelNum === 2) model2 = object;
-    console.log(`${fileName} loaded.`);
+    
+    console.log(`${fileName} loaded at Scene Pos: ${object.position.x}, ${object.position.y}, ${object.position.z}`);
   });
 };
 
-loadModel('Modelo1.obj', 0x888888, 1); // Grey Model
-loadModel('Modelo2.obj', 0x5555ff, 2); // Blue Model
+loadModel('Modelo1.obj', 0x888888, 1);
+loadModel('Modelo2.obj', 0x5555ff, 2);
 
-// Visibility Toggles Logic
-document.getElementById('toggleModel1')?.addEventListener('change', (e) => {
-  if (model1) model1.visible = (e.target as HTMLInputElement).checked;
-});
-document.getElementById('toggleModel2')?.addEventListener('change', (e) => {
-  if (model2) model2.visible = (e.target as HTMLInputElement).checked;
-});
-
-// --- 5. ENTITY MANAGEMENT (BLOCK 2) ---
+// --- 6. ENTITY MANAGEMENT (POINT CREATION) ---
 interface Entity {
   id: number;
   mesh: THREE.Mesh;
@@ -91,29 +113,26 @@ const updateUIList = () => {
     li.style.cssText =
       'background: #222; margin-bottom: 5px; padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;';
 
+    // Show transformed "Real World" coordinates to the user
     const pos = entity.mesh.position;
+    const worldX = globalAnchor ? (pos.x + globalAnchor.x).toFixed(2) : pos.x;
+    const worldY = globalAnchor ? (pos.y + globalAnchor.y).toFixed(2) : pos.y;
+    const worldZ = globalAnchor ? (pos.z + globalAnchor.z).toFixed(2) : pos.z;
+
     li.innerHTML = `
-      <span>#${index + 1} (${pos.x}, ${pos.y}, ${pos.z})</span>
-      <button onclick="deleteEntity(${
-        entity.id
-      })" style="background: #ff4444; border: none; color: white; border-radius: 3px; cursor: pointer; padding: 2px 8px; font-weight: bold;">X</button>
+      <span>#${index + 1} World: (${worldX}, ${worldY}, ${worldZ})</span>
+      <button onclick="deleteEntity(${entity.id})" style="background: #ff4444; border: none; color: white; border-radius: 3px; cursor: pointer; padding: 2px 8px; font-weight: bold;">X</button>
     `;
     listElement.appendChild(li);
   });
 };
 
 const createPoint = () => {
-  const x =
-    parseFloat((document.getElementById('posX') as HTMLInputElement).value) ||
-    0;
-  const y =
-    parseFloat((document.getElementById('posY') as HTMLInputElement).value) ||
-    0;
-  const z =
-    parseFloat((document.getElementById('posZ') as HTMLInputElement).value) ||
-    0;
+  // User enters "Original/World" coordinates
+  const inputX = parseFloat((document.getElementById('posX') as HTMLInputElement).value) || 0;
+  const inputY = parseFloat((document.getElementById('posY') as HTMLInputElement).value) || 0;
+  const inputZ = parseFloat((document.getElementById('posZ') as HTMLInputElement).value) || 0;
 
-  // Sphere size adjusted for visibility against large models
   const geometry = new THREE.SphereGeometry(2, 32, 32);
   const material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
@@ -122,17 +141,29 @@ const createPoint = () => {
   });
   const sphere = new THREE.Mesh(geometry, material);
 
-  sphere.position.set(x, y, z);
-  scene.add(sphere);
+  /**
+   * MAP USER INPUT TO SCENE SPACE:
+   * ScenePos = UserInput (World) - GlobalAnchor
+   */
+  if (globalAnchor) {
+    sphere.position.set(
+      inputX - globalAnchor.x,
+      inputY - globalAnchor.y,
+      inputZ - globalAnchor.z
+    );
+  } else {
+    sphere.position.set(inputX, inputY, inputZ);
+  }
 
+  scene.add(sphere);
   entities.push({ id: Date.now(), mesh: sphere });
   updateUIList();
 
-  // Center camera on new entity
-  controls.target.set(x, y, z);
+  // Focus camera
+  controls.target.set(sphere.position.x, sphere.position.y, sphere.position.z);
 };
 
-// Global delete function for HTML access
+// Global delete function
 (window as any).deleteEntity = (id: number) => {
   const index = entities.findIndex((e) => e.id === id);
   if (index !== -1) {
@@ -142,9 +173,17 @@ const createPoint = () => {
   }
 };
 
+// Visibility Toggles Logic
+document.getElementById('toggleModel1')?.addEventListener('change', (e) => {
+  if (model1) model1.visible = (e.target as HTMLInputElement).checked;
+});
+document.getElementById('toggleModel2')?.addEventListener('change', (e) => {
+  if (model2) model2.visible = (e.target as HTMLInputElement).checked;
+});
+
 document.getElementById('btnCreate')?.addEventListener('click', createPoint);
 
-// --- 6. ANIMATION LOOP ---
+// --- 7. ANIMATION LOOP ---
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
@@ -152,7 +191,6 @@ function animate() {
 }
 animate();
 
-// Handle Window Resize
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();

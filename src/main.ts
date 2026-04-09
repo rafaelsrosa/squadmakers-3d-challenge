@@ -51,45 +51,61 @@ const loadModel = (fileName: string, color: number, modelNum: number) => {
   loader.load(`/${fileName}`, (object) => {
     object.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
-        (child as THREE.Mesh).material = new THREE.MeshStandardMaterial({
+        const mesh = child as THREE.Mesh;
+        mesh.material = new THREE.MeshStandardMaterial({
           color: color,
           side: THREE.DoubleSide,
         });
+        
+        // Ensure bounding box is calculated before centering
+        mesh.geometry.computeBoundingBox();
       }
     });
 
-    // --- SPATIAL COHERENCE LOGIC ---
-    // Calculate the actual center of the current model file
+    // A. Calculate the model's center in world coordinates BEFORE normalization
     const box = new THREE.Box3().setFromObject(object);
     const originalCenter = new THREE.Vector3();
     box.getCenter(originalCenter);
 
-    // If this is the first model, define the Global Anchor
+    // B. Set the Global Anchor if it's the first model loaded
     if (!globalAnchor) {
       globalAnchor = originalCenter.clone();
-      console.log('Global Anchor established at original coordinates:', globalAnchor);
+      console.log('Global Anchor established at:', globalAnchor);
     }
 
-    /**
-     * COORDINATE TRANSFORMATION LAYER:
-     * Instead of using .center() on every object (which destroys relative distance),
-     * we subtract the same Global Anchor from all objects.
-     * This maintains the real-world spatial relationship between different files.
-     */
+    // C. GEOMETRY NORMALIZATION
+    // Move vertices to (0,0,0) locally so the mesh isn't offset by millions of units.
+    // This fixes the "invisible model" issue caused by floating point precision in UTM.
+    object.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry.center(); 
+      }
+    });
+
+    // D. POSITION THE OBJECT IN SCENE SPACE
+    // We apply the relative offset between this model and the Global Anchor.
     object.position.set(
       originalCenter.x - globalAnchor.x,
       originalCenter.y - globalAnchor.y,
       originalCenter.z - globalAnchor.z
     );
 
-    // Store original coordinates for UI feedback
-    object.userData.originalFileCenter = originalCenter.clone();
-
     scene.add(object);
-    if (modelNum === 1) model1 = object;
+
+    if (modelNum === 1) {
+      model1 = object;
+      // --- AUTO-FOCUS ADJUSTMENT (ZOOM EXTENTS) ---
+      // Focus camera on the first model, which sits at (0,0,0) in scene space.
+      controls.target.set(0, 0, 0);
+      camera.position.set(200, 200, 200); 
+      controls.update();
+      console.log('Camera auto-focused on Model 1.');
+    }
+    
     if (modelNum === 2) model2 = object;
     
-    console.log(`${fileName} loaded at Scene Pos: ${object.position.x}, ${object.position.y}, ${object.position.z}`);
+    console.log(`${fileName} loaded at Scene Pos:`, object.position);
   });
 };
 

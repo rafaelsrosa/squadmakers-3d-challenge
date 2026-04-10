@@ -73,18 +73,17 @@ const loadModel = (fileName: string, color: number, modelNum: number) => {
       console.log('Global Anchor established at:', globalAnchor);
     }
 
-    // C. GEOMETRY NORMALIZATION
-    // Move vertices to (0,0,0) locally so the mesh isn't offset by millions of units.
-    // This fixes the "invisible model" issue caused by floating point precision in UTM.
+    // C. GEOMETRY ALIGNMENT
+    // We center the geometry to handle floating point precision
     object.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        mesh.geometry.center(); 
+        (child as THREE.Mesh).geometry.center();
       }
     });
 
     // D. POSITION THE OBJECT IN SCENE SPACE
-    // We apply the relative offset between this model and the Global Anchor.
+    // This ensures Model 2 is placed at the correct distance from Model 1
+    // based on their original UTM world coordinates.
     object.position.set(
       originalCenter.x - globalAnchor.x,
       originalCenter.y - globalAnchor.y,
@@ -95,15 +94,12 @@ const loadModel = (fileName: string, color: number, modelNum: number) => {
 
     if (modelNum === 1) {
       model1 = object;
-      // --- AUTO-FOCUS ADJUSTMENT (ZOOM EXTENTS) ---
-      // Focus camera on the first model, which sits at (0,0,0) in scene space.
       controls.target.set(0, 0, 0);
-      camera.position.set(200, 200, 200); 
       controls.update();
       console.log('Camera auto-focused on Model 1.');
+    } else if (modelNum === 2) {
+      model2 = object;
     }
-    
-    if (modelNum === 2) model2 = object;
     
     console.log(`${fileName} loaded at Scene Pos:`, object.position);
   });
@@ -127,7 +123,7 @@ const updateUIList = () => {
   entities.forEach((entity, index) => {
     const li = document.createElement('li');
     li.style.cssText =
-      'background: #222; margin-bottom: 5px; padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444;';
+      'background: #222; margin-bottom: 5px; padding: 8px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #444; color: white;';
 
     // Show transformed "Real World" coordinates to the user
     const pos = entity.mesh.position;

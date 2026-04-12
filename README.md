@@ -14,6 +14,9 @@ Block 2: Entity management system with a synchronized UI list, mapping Real-Worl
 
 UX Enhancement: Automatic "Zoom Extents" focus on model load to handle large-scale offsets.
 
+Real-Time Spatial Debugging: An interactive UTM Mouse Tracker that reverse-engineers scene coordinates back to real-world UTM values in real-time.
+
+
 ## How to run locally
 1. Clone the repository:
    git clone https://github.com/rafaelsrosa/squadmakers-3d-challenge.git
@@ -27,6 +30,7 @@ UX Enhancement: Automatic "Zoom Extents" focus on model load to handle large-sca
 ## Architecture Decisions
 1. Spatial Coherence & Global Anchor Transformation
 To ensure 100% geospatial integrity, the system implements a Global Anchor Transformation. Instead of treating models as isolated objects, the first model loaded establishes the Geospatial Origin. All subsequent models and user-created entities are positioned using their absolute UTM offset relative to this anchor. This preserves the 1:1 metric distance between all assets, ensuring that spatial relationships from the original CAD/OBJ files are maintained exactly in the 3D scene.
+The system also performs a Coordinate System Alignment: since OBJ files from engineering (CAD) often use Z as the vertical axis (Altitude), the loader automatically applies a 90° X-axis rotation and remapping. This ensures that 'Altitude' translates to the scene's Y-axis, while maintaining 'North' and 'East' on the horizontal plane.
 
 2. Precision Handling (Avoiding Jitter)
 Standard 3D engines struggle with UTM coordinates (exceeding 4,000,000 units) due to floating-point precision limits, which usually causes "shaking" (jitter) or invisible models.

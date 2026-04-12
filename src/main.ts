@@ -93,6 +93,7 @@ const loadModel = (fileName: string, color: number, modelNum: number) => {
 
     // Rotate the object -90° around the X-axis to map the file's Z-axis (altitude) to the scene's Y-axis (vertical).
     object.rotation.x = Math.PI / 2;
+    object.scale.z = -1
 
     scene.add(object);
 
@@ -170,6 +171,7 @@ const createPoint = () => {
     );
     // Rotate the sphere -90° around the X-axis to map the file's Z-axis (altitude) to the scene's Y-axis (vertical).
     sphere.rotation.x = Math.PI / 2;
+    sphere.scale.z = -1
   }
 
   scene.add(sphere);
